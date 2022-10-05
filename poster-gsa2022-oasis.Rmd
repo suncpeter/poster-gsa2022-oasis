@@ -1,0 +1,128 @@
+---
+title: "Code for GSA 2022 Poster - Variations in Benefits of Intergenerational Tutoring in the 'New Normal'"
+author: "Peter Sun"
+date: "November, 2022"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 3
+---
+
+# Import Packages
+
+```{r warning=F, message=F, error=F}
+library(tidyverse)
+library(viridis)
+library(colorspace)
+library(waffle)
+library(extrafont)
+library(ggpubr)
+extrafont::font_import(path = "private/", pattern = "fa-", prompt = F)
+loadfonts(device = "win")
+# extrafont::fonttable() %>%
+#   dplyr::as_tibble() %>%
+#   dplyr::filter(grepl("Awesom", FamilyName)) %>%
+#   select(FamilyName, FontName, fontfile)
+library(showtext)
+font_add(family = "FontAwesome5Free-Solid", regular = "private/fa-solid-900.ttf")
+font_add(family = "FontAwesome5Free-Regular", regular = "private/fa-regular-400.ttf")
+font_add(family = "FontAwesome5Brands-Regular", regular = "private/fa-brands-400.ttf")
+showtext_auto()
+```
+
+# Import Data and Labels
+
+```{r}
+df <- read_csv("data.csv") %>%
+  mutate(post.health.re = recode(post.health, `About the same` = 0, 
+                                 `Better` = 1, .default = NA_real_)) %>%
+  mutate(male = recode(male, `Male` = "Yes", `Female` = "No")) %>%
+  mutate(everyone = "Yes")
+```
+
+# Hypothesis Tests
+
+```{r}
+df %>%
+  count(first.time, post.health) %>%
+  mutate(pct = n / sum(n))
+chisq.test(table(df$first.time, df$post.health))
+lsr::cramersV(df$first.time, df$post.health)
+mantelhaen.test(df$first.time, df$post.health, df$pre.health)
+```
+
+# Individual Data
+
+```{r}
+df %>%
+  filter(first.time == "Yes") %>%
+  count(first.time, post.health) %>%
+  mutate(pct = n / sum(n)) %>%
+  mutate(pct_r = round(pct * 100)) %>%
+  filter(!is.na(post.health)) %>%
+  select(post.health, pct_r)
+```
+
+# Function to Generate Waffle Plots
+
+```{r}
+get_waffle <- function(var, title, begin, end, glyph, colors) {
+  data <- df %>%
+    filter({{ var }} == "Yes") %>%
+    count({{ var }}, post.health) %>%
+    mutate(pct = n / sum(n)) %>%
+    mutate(pct_r = round(pct * 100)) %>%
+    filter(!is.na(post.health)) %>%
+    select(post.health, pct_r) %>%
+    deframe()
+  plot <- data %>%
+    waffle(
+      use_glyph = glyph, rows = 6,
+      colors = colors,
+      glyph_size = 35
+    ) +
+    labs(title = title) +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(size = 150),
+      plot.caption = element_text(size = 100),
+      text = element_text(size = 100, color = "white"),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.background = element_rect(fill = "transparent", colour = NA),
+      plot.background = element_rect(fill = "transparent", colour = NA),
+      legend.key = element_rect(fill = "transparent", colour = "transparent"),
+      legend.text = element_text(size = 200),
+      legend.spacing.x = unit(1, "cm"),
+      legend.background = element_rect(fill = NA, color = NA)
+    )
+  return(list(data = data, plot = plot))
+}
+```
+
+# Save Plots
+
+```{r}
+p1 <- get_waffle(everyone, "All Volunteers", 0.2, 0.4, "users",
+                 darken(c("#872996", "#60a844"), amount = 0.2))
+p2 <- get_waffle(first.time, "First-Time Volunteers*", 0.4, 0.6, "smile",
+                 lighten(c("#872996", "#60a844"), amount = 0.8))
+p3 <- get_waffle(caregiver, "Caregivers", 0.6, 0.8, "hands-helping",
+                 darken(c("#872996", "#60a844"), amount = 0.2))
+p4 <- get_waffle(male, "Male Volunteers", 0.8, 1.0, "user",
+                 darken(c("#872996", "#60a844"), amount = 0.2))
+p.all <- ggarrange(p1$plot, p2$plot, p3$plot, p4$plot,
+  ncol = 2, nrow = 2, common.legend = T, legend = "none"
+)
+ggsave("p.all.png",
+  plot = p.all,
+  width = 16, height = 8, dpi = 600, bg = "transparent"
+)
+
+# Get legend separately from an individual plot
+ggsave("p1.png",
+  plot = p1$plot,
+  width = 8, height = 8, dpi = 600, bg = "transparent"
+)
+```
